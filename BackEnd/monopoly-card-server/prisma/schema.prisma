@@ -1,0 +1,368 @@
+// ==========================================
+// CẤU HÌNH DATABASE
+// ==========================================
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. META-GAME: TÀI KHOẢN & PROFILE
+// ==========================================
+model Account {
+  account_id    Int          @id @default(autoincrement())
+  email         String       @unique
+  password_hash String
+  created_at    DateTime     @default(now())
+  is_admin      Boolean      @default(false)
+  is_disable    Boolean      @default(false)
+  user_profile  UserProfile?
+}
+
+model UserProfile {
+  user_profile_id Int      @id @default(autoincrement())
+  account_id      Int      @unique
+  user_name       String
+  phone_number    String?
+  gold            Int      @default(0)
+  diamonds        Int      @default(0)
+  rank_points     Int      @default(1000)
+  rank_tier       String   @default("BRONZE")
+
+  account         Account           @relation(fields: [account_id], references: [account_id], onDelete: Cascade)
+  characters      UserCharacter[]
+  transactions    Transaction[]
+  cards           UserCard[]
+  decks           UserDeck[]
+  game_players    GamePlayer[]
+}
+
+// ==========================================
+// 2. NHÂN VẬT & KỸ NĂNG
+// ==========================================
+model Character {
+  character_id    Int              @id @default(autoincrement())
+  name            String           @unique
+  rarity          String           @default("NORMAL")
+  base_stats      Json?
+  
+  skills          CharacterSkill[]
+  user_characters UserCharacter[]
+  game_players    GamePlayer[]
+}
+
+model Skill {
+  skill_id     Int              @id @default(autoincrement())
+  skill_name   String           @unique
+  description  String?          @db.Text
+  effect_type  SkillEffectType
+  trigger_type SkillTriggerType
+  effect_data  Json
+  cooldown     Int              @default(0)
+
+  characters   CharacterSkill[]
+}
+
+model CharacterSkill {
+  character_id    Int
+  skill_id        Int
+  unlock_at_level Int @default(1)
+
+  character Character @relation(fields: [character_id], references: [character_id], onDelete: Cascade)
+  skill     Skill     @relation(fields: [skill_id], references: [skill_id], onDelete: Cascade)
+
+  @@id([character_id, skill_id])
+}
+
+model UserCharacter {
+  inventory_id    Int         @id @default(autoincrement())
+  user_profile_id Int
+  character_id    Int
+  level           Int         @default(1)
+  acquired_at     DateTime    @default(now())
+
+  user_profile UserProfile @relation(fields: [user_profile_id], references: [user_profile_id], onDelete: Cascade)
+  character    Character   @relation(fields: [character_id], references: [character_id], onDelete: Cascade)
+
+  @@unique([user_profile_id, character_id])
+}
+
+// ==========================================
+// 3. THẺ BÀI & BỘ BÀI (DECK)
+// ==========================================
+model Card {
+  card_id      Int            @id @default(autoincrement())
+  card_name    String
+  description  String?        @db.Text
+  effect_type  CardEffectType
+  effect_data  Json
+  images       String?
+
+  user_cards   UserCard[]
+  deck_cards   DeckCard[]
+}
+
+model UserCard {
+  user_profile_id Int
+  card_id         Int
+  quantity        Int         @default(1)
+
+  user_profile UserProfile @relation(fields: [user_profile_id], references: [user_profile_id], onDelete: Cascade)
+  card         Card        @relation(fields: [card_id], references: [card_id], onDelete: Cascade)
+
+  @@id([user_profile_id, card_id])
+}
+
+model UserDeck {
+  deck_id         Int         @id @default(autoincrement())
+  user_profile_id Int
+  deck_name       String      @default("My Deck")
+  is_active       Boolean     @default(true)
+
+  user_profile UserProfile  @relation(fields: [user_profile_id], references: [user_profile_id], onDelete: Cascade)
+  cards        DeckCard[]
+  game_players GamePlayer[]
+
+  @@unique([deck_id, user_profile_id]) // Dùng để Ràng buộc Khóa ngoại kép bảo mật Deck
+}
+
+model DeckCard {
+  deck_id  Int
+  card_id  Int
+  quantity Int  @default(1)
+
+  deck UserDeck @relation(fields: [deck_id], references: [deck_id], onDelete: Cascade)
+  card Card     @relation(fields: [card_id], references: [card_id], onDelete: Cascade)
+
+  @@id([deck_id, card_id])
+}
+
+// ==========================================
+// 4. BẢN ĐỒ & Ô CỜ
+// ==========================================
+model Map {
+  map_id        Int      @id @default(autoincrement())
+  map_name      String
+  shape         String   @default("SQUARE")
+  shape_config  Json?
+  cell_sequence Json
+  is_active     Boolean  @default(true)
+
+  games Game[]
+}
+
+model BoardCell {
+  cell_id         Int      @id @default(autoincrement())
+  name            String
+  type            CellType
+  price           Int      @default(0)
+  base_rent       Int      @default(0)
+  max_house_level Int      @default(4)
+  rent_levels     Json?
+  image           String?
+  description     String?  @db.Text
+
+  properties PlayerProperty[]
+}
+
+// ==========================================
+// 5. IN-GAME CORE (TRÁI TIM GAME SERVER)
+// ==========================================
+model Game {
+  game_id            Int        @id @default(autoincrement())
+  map_id             Int
+  created_by         Int
+  start_time         DateTime   @default(now())
+  end_time           DateTime?
+  status             GameStatus @default(WAITING)
+  max_players        Int        @default(4)
+  game_mode          String     @default("CLASSIC")
+  
+  current_turn_index Int        @default(1)
+  turn_state         TurnState  @default(WAIT_ROLL)
+  turn_started_at    DateTime?
+  turn_time_limit    Int        @default(30)
+  version            Int        @default(0)
+  winner_id          Int?
+
+  map                Map                 @relation(fields: [map_id], references: [map_id], onDelete: Cascade)
+  players            GamePlayer[]
+  properties         PlayerProperty[]
+  logs               GameLog[]
+  transactions       InGameTransaction[]
+
+  @@index([game_id])
+}
+
+model GamePlayer {
+  game_player_id     Int     @id @default(autoincrement())
+  game_id            Int
+  user_profile_id    Int
+  character_id       Int
+  deck_id            Int
+  
+  is_ready           Boolean @default(false)
+  turn_order         Int
+  balance            Int     @default(0)
+  position           Int     @default(0)
+  current_lap        Int     @default(0)
+  is_bankrupt        Boolean @default(false)
+  is_bot             Boolean @default(false)
+
+  // State in-game JSON
+  cards_in_hand      Json?
+  cards_draw_pile    Json?
+  cards_discard_pile Json?
+  skill_cooldowns    Json?
+  status_effects     Json?
+
+  game               Game          @relation(fields: [game_id], references: [game_id], onDelete: Cascade)
+  user_profile       UserProfile   @relation(fields: [user_profile_id], references: [user_profile_id])
+  character          Character     @relation(fields: [character_id], references: [character_id])
+  
+  // Khóa ngoại kép bảo mật: Deck đem vào ván game bắt buộc phải là của thằng user đó sở hữu
+  deck               UserDeck      @relation(fields: [deck_id, user_profile_id], references: [deck_id, user_profile_id])
+
+  properties         PlayerProperty[]
+  logs               GameLog[]
+  tx_sent            InGameTransaction[] @relation("FromPlayer")
+  tx_received        InGameTransaction[] @relation("ToPlayer")
+
+  @@unique([game_id, user_profile_id])
+  @@unique([game_id, turn_order])
+  @@index([game_id])
+}
+
+model PlayerProperty {
+  game_id         Int
+  cell_id         Int
+  owner_player_id Int?
+  house_level     Int  @default(0)
+
+  game            Game        @relation(fields: [game_id], references: [game_id], onDelete: Cascade)
+  cell            BoardCell   @relation(fields: [cell_id], references: [cell_id], onDelete: Cascade)
+  owner           GamePlayer? @relation(fields: [owner_player_id], references: [game_player_id], onDelete: SetNull)
+
+  @@id([game_id, cell_id])
+  @@index([game_id])
+}
+
+model GameLog {
+  log_id         Int      @id @default(autoincrement())
+  game_id        Int
+  turn_number    Int
+  game_player_id Int
+  log_data       Json
+  created_at     DateTime @default(now())
+
+  game   Game       @relation(fields: [game_id], references: [game_id], onDelete: Cascade)
+  player GamePlayer @relation(fields: [game_player_id], references: [game_player_id], onDelete: Cascade)
+
+  @@index([game_id])
+}
+
+// ==========================================
+// 6. GIAO DỊCH (LOGS)
+// ==========================================
+model Transaction {
+  transaction_id   Int             @id @default(autoincrement())
+  user_profile_id  Int
+  currency_type    CurrencyType
+  amount           Int
+  transaction_type TransactionType
+  description      String?         @db.VarChar(255)
+  created_at       DateTime        @default(now())
+
+  user_profile UserProfile @relation(fields: [user_profile_id], references: [user_profile_id], onDelete: Cascade)
+
+  @@index([user_profile_id])
+}
+
+model InGameTransaction {
+  transaction_id Int      @id @default(autoincrement())
+  game_id        Int
+  turn_number    Int?
+  from_player_id Int?
+  to_player_id   Int?
+  amount         Int
+  description    String?  @db.VarChar(255)
+  created_at     DateTime @default(now())
+
+  game        Game        @relation(fields: [game_id], references: [game_id], onDelete: Cascade)
+  from_player GamePlayer? @relation("FromPlayer", fields: [from_player_id], references: [game_player_id])
+  to_player   GamePlayer? @relation("ToPlayer", fields: [to_player_id], references: [game_player_id])
+}
+
+// ==========================================
+// ENUMS (CHUẨN HÓA DỮ LIỆU)
+// ==========================================
+enum CurrencyType {
+  GOLD
+  DIAMOND
+}
+
+enum TransactionType {
+  BUY
+  SELL
+  REWARD
+  PENALTY
+  TOPUP
+  GACHA
+  MATCH_REWARD
+}
+
+enum SkillEffectType {
+  ADD_MONEY
+  REDUCE_RENT
+  FREE_RENT
+  FREE_JAIL
+  DOUBLE_DICE
+  SELECTED_DICE
+  REFLECT_DMG
+  RANDOM_EVENT
+}
+
+enum SkillTriggerType {
+  PASSIVE
+  ON_LAND
+  ON_TURN_START
+  AFTER_ROLL
+  ON_TURN_END
+  ON_ACTIVE
+}
+
+enum CardEffectType {
+  MOVE
+  TELEPORT
+  PAY
+  RECEIVE
+  DESTROY_HOUSE
+  STEAL_MONEY
+  CATCH_SOMEONE
+}
+
+enum CellType {
+  START
+  PROPERTY
+  CHANCE
+  TAX
+  JAIL
+  EVENT
+}
+
+enum GameStatus {
+  WAITING
+  PLAYING
+  FINISHED
+  CANCELED
+}
+
+enum TurnState {
+  WAIT_ROLL
+  ROLLED
+  ACTION_DONE
+}

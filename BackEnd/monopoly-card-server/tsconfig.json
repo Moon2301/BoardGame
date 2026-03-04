@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "es2022",                                  /* Phiên bản JS compile ra */
+    "module": "commonjs",                                /* Dùng CommonJS cho Node.js */
+    "rootDir": "./src",                                  /* Thư mục chứa code gốc */
+    "outDir": "./dist",                                  /* Thư mục chứa code sau khi build */
+    "esModuleInterop": true,                             /* Cho phép import các thư viện cũ dễ dàng */
+    "forceConsistentCasingInFileNames": true,            /* Bắt lỗi viết hoa/thường tên file */
+    "strict": true,                                      /* Bật kiểm tra kiểu dữ liệu nghiêm ngặt */
+    "skipLibCheck": true,                                /* Bỏ qua check lỗi trong thư viện (để build nhanh) */
+    "verbatimModuleSyntax": false                        /* TẮT CÁI GÂY RA LỖI ĐI */
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}
